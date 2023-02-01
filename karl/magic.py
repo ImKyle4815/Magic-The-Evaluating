@@ -22,20 +22,22 @@ for raw_card in raw_cards:
 
 
 def tokenize(data, field, tokenizer):
-    res = [c[field] for c in data]
+    try:
+        res = [c[field] for c in data]
+    except:
+        res = [data[field]]
     res = np.array(res)
     tokenizer.fit_on_texts(res)
-    res = tokenizer.texts_to_sequences(res)
-    res = keras.utils.pad_sequences(res)
+    res = tokenizer.texts_to_matrix(res)
     return res
 
-
-def vectorize_sequences(sequences, dimension=10000):
-    results = np.zeros((len(sequences), dimension))
-    for i, sequence in enumerate(sequences):
-        for j in sequence:
-            results[i, j] = 1
-    return results
+#
+# def vectorize_sequences(sequences, dimension=10000):
+#     results = np.zeros((len(sequences), dimension))
+#     for i, sequence in enumerate(sequences):
+#         for j in sequence:
+#             results[i, j] = 1
+#     return results
 
 
 def extractValue(source, field):
@@ -54,19 +56,24 @@ def normalizeValues(x):
     return x
 
 
+def unnormalizeValues(x, std, mean):
+    return x * std + mean
+
+
 t = Tokenizer(num_words=100, lower=1, oov_token="<OOV>")
-names = vectorize_sequences(tokenize(cards, "name", t))
-rules = vectorize_sequences(tokenize(cards, "rules", t))
-costs = vectorize_sequences(tokenize(cards, "cost", t))
-types = vectorize_sequences(tokenize(cards, "type", t))
+names = tokenize(cards, "name", t)
+rules = tokenize(cards, "rules", t)
+costs = tokenize(cards, "cost", t)
+types = tokenize(cards, "type", t)
 prices = extractValue(cards, "usd")
+std = prices.std(axis=0)
+mean = prices.mean(axis=0)
+
 prices = normalizeValues(prices)
-input_tensor = tf.concat([names, costs, types, rules], axis=-1)
+input_tensor = tf.concat([names, rules, costs, types], axis=1)
 max_length = maxLengthString(input_tensor)
 
 model = keras.Sequential([
-    # keras.layers.Embedding(input_dim=10000, output_dim=64, input_length=max_length),
-    # keras.layers.Flatten(),
     keras.layers.Dense(units=64, activation='relu'),
     keras.layers.Dense(units=32, activation='relu'),
     keras.layers.Dense(units=1, activation="linear")
@@ -77,7 +84,21 @@ model.compile(optimizer="adam", loss="mse")
 x_train, x_test = input_tensor[:20000], input_tensor[20000:]
 y_train, y_test = prices[:20000], prices[20000:]
 
-model.fit(x_train, y_train, epochs=5, batch_size=32)
+model.fit(x_train, y_train, epochs=15, batch_size=32)
 
 test_loss = model.evaluate(x_test, y_test, batch_size=32)
 print(test_loss)
+
+new_card = {"name": "Tocasia's Welcome", "rules": "Whenever one or more creatures with mana value 3 or less enter the battlefield under your control, draw a card. This ability triggers only once each turn.", "cost": "{2}{W}", "type": "Enchantment",
+            "rank": 8.0}
+
+name = tokenize(new_card, "name", t)
+rule = tokenize(new_card, "rules", t)
+cost = tokenize(new_card, "cost", t)
+type = tokenize(new_card, "type", t)
+#
+new_input_data = tf.concat([name, rule, cost, type], axis=1)
+
+new_price = model.predict(new_input_data)[0][0]
+
+print("Predicted price:", unnormalizeValues(new_price, std, mean), "\nunnormalized:", new_price)
