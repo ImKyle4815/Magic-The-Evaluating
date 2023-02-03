@@ -102,4 +102,4 @@ model = keras.Sequential([
 model.compile(optimizer='rmsprop', loss='mse', metrics=['accuracy'])
 
 # Training the model
-model.fit(input_tensor, usd, epochs=20)
+model.fit(input_tensor, usd, epochs=10)
