@@ -17,7 +17,7 @@ for raw_card in raw_cards:
         # Required fields (strings)
         card["name"] = raw_card["name"]
         card["rules"] = raw_card["oracle_text"]
-        card["cost"] = raw_card["mana_cost"]
+        card["cost"] = raw_card["mana_cost"].replace("}{", " ").replace("/", "")[1:-2]
         card["type"] = raw_card["type_line"]
         # Required fields (nums)
         card["cmc"] = int(raw_card["cmc"])
@@ -75,13 +75,19 @@ vocab_size = 10000
 tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
 # Tokenize the text
 print("Beginning to tokenize the text")
-names = extractTokenized(cards, "name", tokenizer)
-costs = extractTokenized(cards, "cost", tokenizer)
-types = extractTokenized(cards, "type", tokenizer)
 rules = extractTokenized(cards, "rules", tokenizer)
+names = extractTokenized(cards, "name", tokenizer)
+names = np.pad(names, (0, rules.shape[1] - names.shape[1]))
+costs = extractTokenized(cards, "cost", tokenizer)
+costs = np.pad(costs, (0, rules.shape[1] - names.shape[1]))
+types = extractTokenized(cards, "type", tokenizer)
+types = np.pad(types, (0, rules.shape[1] - names.shape[1]))
 print("Finished tokenizing the text")
-print("Final Shapes: ", names.shape, costs.shape, types.shape, rules.shape)
-input_tensor = np.concatenate([names, costs, types, rules], axis=-1)
+print("Shapes are: ", rules.shape, names.shape, costs.shape, types.shape)
+# input_tensor = np.concatenate([names, costs, types, rules], axis=-1)
+input_tensor = np.stack((names, costs, types, rules))
+print("Final Shape: ", input_tensor.shape)
+print(input_tensor[0])
 # Normalize training values
 # ranks = normalizeValues(extractValue(cards, "rank"))
 usd = extractValue(cards, "usd")
@@ -93,7 +99,6 @@ max_length = maxLengthString(input_tensor)
 model = keras.Sequential([
     keras.layers.Embedding(input_dim=vocab_size, output_dim=64, input_length=max_length),
     keras.layers.Flatten(),
-    keras.layers.Dense(64, activation='relu'),
     keras.layers.Dense(16, activation='relu'),
     keras.layers.Dense(1, activation='sigmoid')
 ])
