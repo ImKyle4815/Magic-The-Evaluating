@@ -31,6 +31,8 @@ for raw_card in raw_cards:
         card["usd"] = transformPrice(float(raw_card["prices"]["usd"]))
         # print(card["usd"])
         # Add the card to the list
+        if int(raw_card["released_at"][:4]) >= 2020:
+            continue
         cards.append(card)
     except:
         continue
@@ -71,7 +73,7 @@ def maxLengthString(array):
 
 
 # Extract arrays
-vocab_size = 10000
+vocab_size = 1048
 tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
 # Tokenize the text
 print("Beginning to tokenize the text")
@@ -98,7 +100,7 @@ max_length = maxLengthString(input_tensor)
 # Building the model
 model = keras.Sequential([
     keras.layers.Embedding(input_dim=vocab_size, output_dim=64, input_length=max_length),
-    keras.layers.Conv1D(128, 32, 8, activation='relu'),
+    keras.layers.Conv1D(128, 8, activation='relu'),
     # keras.layers.MaxPooling1D(2),
     keras.layers.Flatten(),
     keras.layers.Dense(64, activation='relu'),
@@ -109,4 +111,4 @@ model = keras.Sequential([
 model.compile(optimizer='rmsprop', loss='mse', metrics=['accuracy'])
 
 # Training the model
-model.fit(input_tensor, usd, epochs=10)
+model.fit(input_tensor, usd, epochs=12)
