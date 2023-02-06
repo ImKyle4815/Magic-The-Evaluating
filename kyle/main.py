@@ -16,7 +16,7 @@ for raw_card in raw_cards:
         card = {}
         # Required fields (strings)
         card["name"] = raw_card["name"]
-        card["rules"] = raw_card["oracle_text"]
+        card["rules"] = raw_card["oracle_text"].replace(card["name"], "CARDNAME")
         card["cost"] = raw_card["mana_cost"].replace("}{", " ").replace("/", "")[1:-2]
         card["type"] = raw_card["type_line"]
         # Required fields (nums)
@@ -76,16 +76,16 @@ tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
 # Tokenize the text
 print("Beginning to tokenize the text")
 rules = extractTokenized(cards, "rules", tokenizer)
-names = extractTokenized(cards, "name", tokenizer)
-names = np.pad(names, (0, rules.shape[1] - names.shape[1]))
+# names = extractTokenized(cards, "name", tokenizer)
+# names = np.pad(names, (0, rules.shape[1] - names.shape[1]))
 costs = extractTokenized(cards, "cost", tokenizer)
-costs = np.pad(costs, (0, rules.shape[1] - names.shape[1]))
+# costs = np.pad(costs, (0, rules.shape[1] - names.shape[1]))
 types = extractTokenized(cards, "type", tokenizer)
-types = np.pad(types, (0, rules.shape[1] - names.shape[1]))
+# types = np.pad(types, (0, rules.shape[1] - names.shape[1]))
 print("Finished tokenizing the text")
-print("Shapes are: ", rules.shape, names.shape, costs.shape, types.shape)
-# input_tensor = np.concatenate([names, costs, types, rules], axis=-1)
-input_tensor = np.stack((names, costs, types, rules))
+# print("Shapes are: ", rules.shape, names.shape, costs.shape, types.shape)
+input_tensor = np.concatenate([costs, types, rules], axis=-1)
+# input_tensor = np.stack((names, costs, types, rules))
 print("Final Shape: ", input_tensor.shape)
 print(input_tensor[0])
 # Normalize training values
@@ -98,8 +98,10 @@ max_length = maxLengthString(input_tensor)
 # Building the model
 model = keras.Sequential([
     keras.layers.Embedding(input_dim=vocab_size, output_dim=64, input_length=max_length),
+    keras.layers.Conv1D(128, 32, 8, activation='relu'),
+    # keras.layers.MaxPooling1D(2),
     keras.layers.Flatten(),
-    keras.layers.Dense(16, activation='relu'),
+    keras.layers.Dense(64, activation='relu'),
     keras.layers.Dense(1, activation='sigmoid')
 ])
 
