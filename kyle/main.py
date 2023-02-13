@@ -1,10 +1,39 @@
 import json
+import re
+import unicodedata
 import numpy as np
 import tensorflow
 from tensorflow import keras
 
+
+def replace_accented_letters(rule_text):
+    rule_text = unicodedata.normalize('NFKD', rule_text).encode('ascii', 'ignore').decode('utf-8')
+    rule_text = re.sub(r'[^\x00-\x7F]+', '', rule_text)
+    return rule_text
+
+
+def remove_parenthesized_text(rules_text):
+    return re.sub(r'\s*\([^\(\)]*\)\s*', ' ', rules_text)
+
+
+def replace_cardname(card_name, rules_text):
+    if card_name in rules_text:
+        rules_text.replace(card_name, "cardname")
+    return rules_text
+
+
+def remove_punctuation(rules_text):
+    return re.sub(r'[^\w\s]', '', rules_text)
+
+
 def getRulesText(card):
-    return card["oracle_text"].replace(card["name"], "CARDNAME")
+    card_name = card["name"]
+    rules_text = card["oracle_text"]
+    rules_text = replace_cardname(card_name, rules_text)
+    rules_text = remove_punctuation(rules_text)
+    rules_text = remove_parenthesized_text(rules_text)
+    rules_text = replace_accented_letters(rules_text)
+    return rules_text.lower()
 
 def transformPrice(price):
     if price < 0.17:
