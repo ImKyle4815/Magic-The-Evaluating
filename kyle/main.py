@@ -1,7 +1,7 @@
 import json
-import math
-
 import numpy as np
+import tensorflow
+from tensorflow import keras
 
 def transformPrice(price):
     if price < 0.17:
@@ -59,17 +59,49 @@ for raw_card in raw_cards:
         cards.append(card)
     except:
         continue
-# exit(0)
 
 
-################################################################
-################################################################
-################################################################
+########################################################################################################################
+########################################################################################################################
+########################################################################################################################
 
 
-# Tensorflow Stuff
-import tensorflow
-from tensorflow import keras
+def train(text, vocabSize, metadata, prices, numEpochs = 10):
+    # PREPARING VALUES
+    textShape = len(max(text, key=len))
+    metadataShape = metadata.shape[1]
+
+    # BUILDING THE MODEL
+    # text inputs
+    textInputs = keras.Input(shape=(textShape,))
+    # text processing layers
+    embeddedText = keras.layers.Embedding(input_dim=vocabSize, output_dim=128, input_length=textShape)(textInputs)
+    convLayer1 = keras.layers.Conv1D(128, 8, activation='relu')(embeddedText)
+    maxPoolingLayer1 = keras.layers.MaxPooling1D(2)(convLayer1)
+    convLayer2 = keras.layers.Conv1D(64, 8, activation='relu')(maxPoolingLayer1)
+    maxPoolingLayer2 = keras.layers.MaxPooling1D(2)(convLayer2)
+    flattenedText = keras.layers.Flatten()(maxPoolingLayer2)
+    # metadata inputs
+    metadataInputs = keras.Input(shape=(metadataShape,))
+    # concatenate text with numeric metadata
+    concatenatedLayers = keras.layers.concatenate([flattenedText, metadataInputs])
+    # final processing
+    denseLayer1 = keras.layers.Dense(16, activation='relu')(concatenatedLayers)
+    # output layer
+    outputLayer = keras.layers.Dense(1, activation='sigmoid')(denseLayer1)
+    # construct the model
+    model = keras.models.Model(inputs=[textInputs, metadataInputs], outputs=outputLayer)
+
+    # COMPILING THE MODEL
+    model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
+
+    # TRAINING THE MODEL
+    model.fit([rules, metadata], prices, epochs=numEpochs)
+
+
+########################################################################################################################
+########################################################################################################################
+########################################################################################################################
 
 
 def extractTokenized(source, field, tokenizer):
@@ -91,9 +123,6 @@ def normalizeValues(x):
     x /= x.std(axis=0)
     return x
 
-def maxLengthString(array):
-    return len(max(array, key=len))
-
 
 # Extract arrays
 vocab_size = 1048
@@ -101,46 +130,13 @@ tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
 # Tokenize the text
 print("Beginning to tokenize the text")
 rules = extractTokenized(cards, "rules", tokenizer)
-# costs = extractTokenized(cards, "cost", tokenizer)
 types = extractValue(cards, "type")
 cmc = extractValue(cards, "cmc")
 power = (extractValue(cards, "power"))
 toughness = (extractValue(cards, "toughness"))
 metadata = np.stack((cmc, power, toughness, types), axis=-1)
 print("Finished tokenizing the text.")
-# print(input_tensor[0])
 # Prepare training values (labels)
 usd = extractValue(cards, "usd")
-# Get the input shapes
-textShape = maxLengthString(rules)
-print(metadata.shape)
-metadataShape = metadata.shape[1]
 
-
-# Building the model
-
-# text inputs
-textInputs = keras.Input(shape=(textShape,))
-# text processing layers
-embeddedText = keras.layers.Embedding(input_dim=vocab_size, output_dim=128, input_length=textShape)(textInputs)
-convLayer1 = keras.layers.Conv1D(128, 8, activation='relu')(embeddedText)
-maxPoolingLayer1 = keras.layers.MaxPooling1D(2)(convLayer1)
-convLayer2 = keras.layers.Conv1D(64, 8, activation='relu')(maxPoolingLayer1)
-maxPoolingLayer2 = keras.layers.MaxPooling1D(2)(convLayer2)
-flattenedText = keras.layers.Flatten()(maxPoolingLayer2)
-# metadata inputs
-metadataInputs = keras.Input(shape=(metadataShape,))
-# concatenate text with numeric metadata
-concatenatedLayers = keras.layers.concatenate([flattenedText, metadataInputs])
-# final processing
-denseLayer1 = keras.layers.Dense(16, activation='relu')(concatenatedLayers)
-# output layer
-outputLayer = keras.layers.Dense(1, activation='sigmoid')(denseLayer1)
-# construct the model
-model = keras.models.Model(inputs=[textInputs, metadataInputs], outputs=outputLayer)
-
-# Compiling the model
-model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
-
-# Training the model
-model.fit([rules, metadata], usd, epochs=10)
+train(rules, vocab_size, metadata, usd, 10)
