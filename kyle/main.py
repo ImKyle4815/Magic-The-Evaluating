@@ -3,6 +3,9 @@ import numpy as np
 import tensorflow
 from tensorflow import keras
 
+def getRulesText(card):
+    return card["oracle_text"].replace(card["name"], "CARDNAME")
+
 def transformPrice(price):
     if price < 0.17:
         return 0
@@ -39,23 +42,16 @@ for raw_card in raw_cards:
         # Create a blank card
         card = {}
         # Required fields (strings)
-        card["name"] = raw_card["name"]
-        card["rules"] = raw_card["oracle_text"].replace(card["name"], "CARDNAME")
-        card["cost"] = raw_card["mana_cost"].replace("}{", " ").replace("/", "")[1:-2]
+        card["rules"] = getRulesText(raw_card)
         card["type"] = categorizeType(raw_card["type_line"])
         # Required fields (nums)
         card["cmc"] = categorizeCMC(int(raw_card["cmc"]))
         # Optional fields
         card["power"] = 0 if "power" not in raw_card else int(raw_card["power"])
         card["toughness"] = 0 if "toughness" not in raw_card else int(raw_card["toughness"])
-        card["loyalty"] = 0 if "loyalty" not in raw_card else int(raw_card["loyalty"])
         # Evaluation labels
-        card["rank"] = float(raw_card["edhrec_rank"])
         card["usd"] = transformPrice(float(raw_card["prices"]["usd"]))
-        # print(card["usd"])
         # Add the card to the list
-        if int(raw_card["released_at"][:4]) >= 2020:
-            continue
         cards.append(card)
     except:
         continue
