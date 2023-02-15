@@ -63,7 +63,6 @@ def categorizeCMC(cmc):
         return 10
 
 file = open("rawData\oracle-cards-2023_01_17.json", 'r', encoding='utf-8')
-print(file.readline())
 raw_cards = json.load(file)
 file.close()
 
