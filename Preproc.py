@@ -62,8 +62,11 @@ def categorizeCMC(cmc):
     else:
         return 10
 
-file = open("../dataset/oracle-cards.json")
+file = open("rawData\oracle-cards-2023_01_17.json", 'r', encoding='utf-8')
+print(file.readline())
 raw_cards = json.load(file)
+file.close()
+
 cards = []
 for raw_card in raw_cards:
     try:
@@ -91,11 +94,42 @@ for raw_card in raw_cards:
     except:
         continue
 
-
 ########################################################################################################################
 ########################################################################################################################
 ########################################################################################################################
 
+
+def train(text, vocabSize, metadata, prices, numEpochs = 10):
+    # PREPARING VALUES
+    textShape = len(max(text, key=len))
+    metadataShape = metadata.shape[1]
+
+    # BUILDING THE MODEL
+    # text inputs
+    textInputs = keras.Input(shape=(textShape,))
+    # text processing layers
+    embeddedText = keras.layers.Embedding(input_dim=vocabSize, output_dim=128, input_length=textShape)(textInputs)
+    convLayer1 = keras.layers.Conv1D(128, 8, activation='relu')(embeddedText)
+    maxPoolingLayer1 = keras.layers.MaxPooling1D(2)(convLayer1)
+    convLayer2 = keras.layers.Conv1D(64, 8, activation='relu')(maxPoolingLayer1)
+    maxPoolingLayer2 = keras.layers.MaxPooling1D(2)(convLayer2)
+    flattenedText = keras.layers.Flatten()(maxPoolingLayer2)
+    # metadata inputs
+    metadataInputs = keras.Input(shape=(metadataShape,))
+    # concatenate text with numeric metadata
+    concatenatedLayers = keras.layers.concatenate([flattenedText, metadataInputs])
+    # final processing
+    denseLayer1 = keras.layers.Dense(16, activation='relu')(concatenatedLayers)
+    # output layer
+    outputLayer = keras.layers.Dense(1, activation='sigmoid')(denseLayer1)
+    # construct the model
+    model = keras.models.Model(inputs=[textInputs, metadataInputs], outputs=outputLayer)
+
+    # COMPILING THE MODEL
+    model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
+
+    # TRAINING THE MODEL
+    model.fit([rules, metadata], prices, epochs=numEpochs)
 
 
 
@@ -135,6 +169,8 @@ cmc = extractValue(cards, "cmc")
 power = (extractValue(cards, "power"))
 toughness = (extractValue(cards, "toughness"))
 metadata = np.stack((cmc, power, toughness, types), axis=-1)
+print(metadata)
+print(rules)
 print("Finished tokenizing the text.")
 # Prepare training values (labels)
 usd = extractValue(cards, "usd")
