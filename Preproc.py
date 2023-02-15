@@ -1,6 +1,7 @@
-import numpy as np
 import json
-import os
+import numpy as np
+import tensorflow
+from tensorflow import keras
 import re
 import unicodedata
 
@@ -33,6 +34,36 @@ def cleanRulesText(card_name, rules_text):
     return rules_text.lower()
 
 
+def transformPrice(price):
+    if price < 0.17:
+        return 0
+    else:
+        return 1
+
+def categorizeType(type):
+    if "Creature" in type:
+        return 0
+    elif "Instant" in type:
+        return 0.2
+    elif "Sorcery" in type:
+        return 0.4
+    elif "Enchantment" in type:
+        return 0.6
+    elif "Artifact" in type:
+        return 0.8
+    elif "Land" in type:
+        return 1
+    else:
+        raise Exception("Ignoring type: " + type)
+
+def categorizeCMC(cmc):
+    if cmc < 10:
+        return cmc / 10
+    else:
+        return 10
+
+file = open("../dataset/oracle-cards.json")
+raw_cards = json.load(file)
 cards = []
 for raw_card in raw_cards:
     try:
@@ -40,34 +71,37 @@ for raw_card in raw_cards:
         card = {}
         # Required fields (strings)
         card["name"] = raw_card["name"]
-        card["rules"] = cleanRulesText(raw_card["oracle_text"], card["name"])
-        
-        
+        card["rules"] = cleanRulesText(raw_card["oracle_text"])
         card["cost"] = raw_card["mana_cost"].replace("}{", " ").replace("/", "")[1:-2]
-        card["type"] = raw_card["type_line"]
+        card["type"] = categorizeType(raw_card["type_line"])
         # Required fields (nums)
-        card["cmc"] = int(raw_card["cmc"])
+        card["cmc"] = categorizeCMC(int(raw_card["cmc"]))
         # Optional fields
         card["power"] = 0 if "power" not in raw_card else int(raw_card["power"])
         card["toughness"] = 0 if "toughness" not in raw_card else int(raw_card["toughness"])
         card["loyalty"] = 0 if "loyalty" not in raw_card else int(raw_card["loyalty"])
-        card["cmc"] = int(raw_card["cmc"])
         # Evaluation labels
         card["rank"] = float(raw_card["edhrec_rank"])
+        card["usd"] = transformPrice(float(raw_card["prices"]["usd"]))
+        # print(card["usd"])
+        # Add the card to the list
+        if int(raw_card["released_at"][:4]) >= 2020:
+            continue
         cards.append(card)
     except:
         continue
-    
-print(cards[0])
-file.close()
-################################################################
-################################################################
-################################################################
 
 
-# Tensorflow Stuff
-import tensorflow
-from tensorflow import keras
+########################################################################################################################
+########################################################################################################################
+########################################################################################################################
+
+
+
+
+########################################################################################################################
+########################################################################################################################
+########################################################################################################################
 
 
 def extractTokenized(source, field, tokenizer):
@@ -89,26 +123,20 @@ def normalizeValues(x):
     x /= x.std(axis=0)
     return x
 
-def maxLengthString(array):
-    return len(max(array, key=len))
-
 
 # Extract arrays
-vocab_size = 10000
+vocab_size = 1048
 tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
 # Tokenize the text
-names = extractTokenized(cards, "name", tokenizer)
-costs = extractTokenized(cards, "cost", tokenizer)
-types = extractTokenized(cards, "type", tokenizer)
+print("Beginning to tokenize the text")
 rules = extractTokenized(cards, "rules", tokenizer)
-print(rules[0])
-
-print(names.shape, costs.shape, types.shape, rules.shape)
-input_tensor = np.dstack((names, costs, types, rules))
-print(input_tensor.shape)
-
-# Normalize training values
-# ranks = normalizeValues(extractValue(cards, "rank"))
+types = extractValue(cards, "type")
+cmc = extractValue(cards, "cmc")
+power = (extractValue(cards, "power"))
+toughness = (extractValue(cards, "toughness"))
+metadata = np.stack((cmc, power, toughness, types), axis=-1)
+print("Finished tokenizing the text.")
+# Prepare training values (labels)
 usd = extractValue(cards, "usd")
-# Get the max string length
-max_length = maxLengthString(input_tensor)
+
+train(rules, vocab_size, metadata, usd, 10)
