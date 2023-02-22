@@ -6,6 +6,7 @@ import tensorflow
 from tensorflow import keras
 
 
+
 def replace_accented_letters(rule_text):
     rule_text = unicodedata.normalize('NFKD', rule_text).encode('ascii', 'ignore').decode('utf-8')
     rule_text = re.sub(r'[^\x00-\x7F]+', '', rule_text)
@@ -23,7 +24,7 @@ def replace_cardname(card_name, rules_text):
 
 
 def remove_punctuation(rules_text):
-    return re.sub(r'[^\w\s]', '', rules_text)
+    return rules_text.replace(".", " . ")
 
 
 def getRulesText(card):
@@ -35,11 +36,14 @@ def getRulesText(card):
     rules_text = replace_accented_letters(rules_text)
     return rules_text.lower()
 
-def transformPrice(price):
-    if price < 0.17:
-        return 0
-    else:
-        return 1
+def categorizePrice(price, cutoffs):
+    numCategories = len(cutoffs)
+    categorization = [0] * numCategories
+    for i in range(numCategories):
+        if price < cutoffs[i]:
+            categorization[i] = 1
+            return categorization
+    raise Exception("Unable to categorize price.")
 
 def categorizeType(type):
     if "Creature" in type:
@@ -63,6 +67,8 @@ def categorizeCMC(cmc):
     else:
         return 10
 
+
+priceCutoffs = [0.1, 0.25, 0.5, 1, 10, 100]
 file = open("../dataset/oracle-cards.json")
 raw_cards = json.load(file)
 cards = []
@@ -79,7 +85,7 @@ for raw_card in raw_cards:
         card["power"] = 0 if "power" not in raw_card else int(raw_card["power"])
         card["toughness"] = 0 if "toughness" not in raw_card else int(raw_card["toughness"])
         # Evaluation labels
-        card["usd"] = transformPrice(float(raw_card["prices"]["usd"]))
+        card["usd"] = categorizePrice(float(raw_card["prices"]["usd"]), priceCutoffs)
         # Add the card to the list
         cards.append(card)
     except:
@@ -91,7 +97,22 @@ for raw_card in raw_cards:
 ########################################################################################################################
 
 
-def train(text, vocabSize, metadata, prices, numEpochs = 10):
+def printPriceCategorizationStats(cardList, cutoffs):
+    numCards = len(cardList)
+    print("Num Cards:", numCards)
+    for i in range(len(cutoffs)):
+        print("Under ${:2.2f}: {:2.2%}".format(cutoffs[i], sum(c["usd"][i] == 1 for c in cardList) / numCards))
+
+
+printPriceCategorizationStats(cards, priceCutoffs)
+
+
+########################################################################################################################
+########################################################################################################################
+########################################################################################################################
+
+
+def train(text, vocabSize, metadata, prices, numOutputCategories, numEpochs = 10):
     # PREPARING VALUES
     textShape = len(max(text, key=len))
     metadataShape = metadata.shape[1]
@@ -113,15 +134,15 @@ def train(text, vocabSize, metadata, prices, numEpochs = 10):
     # final processing
     denseLayer1 = keras.layers.Dense(16, activation='relu')(concatenatedLayers)
     # output layer
-    outputLayer = keras.layers.Dense(1, activation='sigmoid')(denseLayer1)
+    outputLayer = keras.layers.Dense(numOutputCategories, activation='softmax')(denseLayer1)
     # construct the model
     model = keras.models.Model(inputs=[textInputs, metadataInputs], outputs=outputLayer)
 
     # COMPILING THE MODEL
-    model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
 
     # TRAINING THE MODEL
-    model.fit([rules, metadata], prices, epochs=numEpochs)
+    model.fit([rules, metadata], prices, epochs=numEpochs, validation_split=0.2)
 
 
 ########################################################################################################################
@@ -150,7 +171,7 @@ def normalizeValues(x):
 
 
 # Extract arrays
-vocab_size = 1048
+vocab_size = 2048
 tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
 # Tokenize the text
 print("Beginning to tokenize the text")
@@ -164,4 +185,4 @@ print("Finished tokenizing the text.")
 # Prepare training values (labels)
 usd = extractValue(cards, "usd")
 
-train(rules, vocab_size, metadata, usd, 10)
+train(rules, vocab_size, metadata, usd, len(priceCutoffs), 10)
