@@ -4,6 +4,11 @@ import tensorflow
 from tensorflow import keras
 
 
+########################################################################################################################
+########################################################################################################################
+########################################################################################################################
+
+
 def get_rules_text(card):
     cardName = card["name"]
     rules_text = card["oracle_text"]
@@ -100,19 +105,6 @@ def parse_raw_cards(filepath, price_cutoff_categories):
 ########################################################################################################################
 
 
-def print_price_categorization_stats(card_prices, cutoffs):
-    num_cards = len(card_prices)
-    print("Num Cards:", num_cards)
-    print("Num Categories:", len(cutoffs))
-    for i in range(len(cutoffs)):
-        print("Under ${:2.2f}: {:2.2%}".format(cutoffs[i], sum(p[i] == 1 for p in card_prices) / num_cards))
-
-
-########################################################################################################################
-########################################################################################################################
-########################################################################################################################
-
-
 def train(text, vocab_size, metadata, prices, num_output_categories, num_epochs=10):
     # PREPARING VALUES
     textShape = len(max(text, key=len))
@@ -150,6 +142,14 @@ def train(text, vocab_size, metadata, prices, num_output_categories, num_epochs=
 ########################################################################################################################
 
 
+def print_price_categorization_stats(card_prices, cutoffs):
+    num_cards = len(card_prices)
+    print("Num Cards:", num_cards)
+    print("Num Categories:", len(cutoffs))
+    for i in range(len(cutoffs)):
+        print("Under ${:2.2f}: {:2.2%}".format(cutoffs[i], sum(p[i] == 1 for p in card_prices) / num_cards))
+
+
 def extract_tokenized(source, tokenizer):
     tokenizer.fit_on_texts(source)
     res = tokenizer.texts_to_sequences(source)
@@ -157,21 +157,25 @@ def extract_tokenized(source, tokenizer):
     return res
 
 
-# def extract_value(source, field):
-#     res = [item[field] for item in source]
-#     res = np.array(res)
-#     return res
+########################################################################################################################
+########################################################################################################################
+########################################################################################################################
 
-
+# Declare price categories
 price_cutoffs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1, 5, 10, 50, 100]
+
+# Parse the raw cards and extract arrays of interest
 (rules_texts, metadata, prices) = parse_raw_cards("../dataset/oracle-cards.json", price_cutoffs)
+
+# Print out the price categorization breakdowns
 print_price_categorization_stats(prices, price_cutoffs)
 
-# Tokenize the text
+# Tokenize the rules text
 print("Beginning to tokenize the text")
 vocab_size = 2048
 tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
 tokenized_rules_texts = extract_tokenized(rules_texts, tokenizer)
 print("Finished tokenizing the text.")
 
+# Train the network
 train(tokenized_rules_texts, vocab_size, metadata, prices, len(price_cutoffs), 10)
