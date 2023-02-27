@@ -88,7 +88,8 @@ def parse_raw_cards(filepath, price_cutoff_categories):
             colors = get_colors(raw_card)
             power = 0 if "power" not in raw_card else int(raw_card["power"])
             toughness = 0 if "toughness" not in raw_card else int(raw_card["toughness"])
-            card_metadata = [type, cmc, power, toughness] + colors
+            num_abilities = card_rules_text.count('/n')
+            card_metadata = [type, cmc, num_abilities] + colors + [power, toughness]
             # Evaluation labels
             card_price = categorize_price(float(raw_card["prices"]["usd"]), price_cutoff_categories)
             # Add the values to the lists
