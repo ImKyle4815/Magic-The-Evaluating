@@ -83,13 +83,13 @@ def parse_raw_cards(filepath, price_cutoff_categories):
             # Strings to be tokenized
             card_rules_text = get_rules_text(raw_card)
             # Concatenated Metadata
-            type = get_type(raw_card)
+            card_type = get_type(raw_card)
             cmc = categorize_cmc(int(raw_card["cmc"]))
             colors = get_colors(raw_card)
             power = 0 if "power" not in raw_card else int(raw_card["power"])
             toughness = 0 if "toughness" not in raw_card else int(raw_card["toughness"])
             num_abilities = card_rules_text.count('/n')
-            card_metadata = [type, cmc, num_abilities] + colors + [power, toughness]
+            card_metadata = [card_type, cmc, num_abilities] + colors + [power, toughness]
             # Evaluation labels
             card_price = categorize_price(float(raw_card["prices"]["usd"]), price_cutoff_categories)
             # Add the values to the lists
