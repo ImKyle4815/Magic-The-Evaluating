@@ -128,6 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 **/.DS_Store
-dataset/*
-kyle/categorized_model/*
-kyle/logs/*
+input/*
+output/categorized_model/*
+output/logs/*
+input/oracle-cards-dataset.json
+input/oracle-cards-dataset.json

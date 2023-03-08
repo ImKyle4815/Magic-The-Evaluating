@@ -134,9 +134,9 @@ def train_categorized(card_texts, card_texts_vocab_size, card_metadata, card_pri
     # DECLARING CALLBACKS
     callbacks = [
         keras.callbacks.EarlyStopping(monitor="val_accuracy", patience=3),
-        keras.callbacks.ModelCheckpoint(filepath="categorized_model/weights.pb", save_best_only=True,
+        keras.callbacks.ModelCheckpoint(filepath="output/categorized_model/weights.pb", save_best_only=True,
                                         save_weights_only=True),
-        keras.callbacks.TensorBoard()
+        keras.callbacks.TensorBoard(log_dir="output/logs")
     ]
     # TRAINING THE MODEL
     model.fit([card_texts, card_metadata], card_prices, epochs=num_epochs, validation_split=0.2, callbacks=callbacks)
@@ -155,9 +155,9 @@ def print_price_categorization_stats(card_prices, cutoffs):
         print("Under ${:2.2f}: {:2.2%}".format(cutoffs[i], sum(p[i] == 1 for p in card_prices) / num_cards))
 
 
-def extract_tokenized(source, tokenizer):
-    tokenizer.fit_on_texts(source)
-    res = tokenizer.texts_to_sequences(source)
+def extract_tokenized(source, text_tokenizer):
+    text_tokenizer.fit_on_texts(source)
+    res = text_tokenizer.texts_to_sequences(source)
     res = keras.preprocessing.sequence.pad_sequences(res)
     return res
 
@@ -170,7 +170,7 @@ def extract_tokenized(source, tokenizer):
 price_cutoffs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1, 5, 10, 50, 100]
 
 # Parse the raw cards and extract arrays of interest
-(rules_texts, metadata, prices, categorized_prices) = parse_raw_cards("../dataset/oracle-cards.json", price_cutoffs)
+(rules_texts, metadata, prices, categorized_prices) = parse_raw_cards("./input/oracle-cards-dataset.json", price_cutoffs)
 
 # Print out the price categorization breakdowns
 print_price_categorization_stats(categorized_prices, price_cutoffs)
@@ -186,4 +186,4 @@ print("Finished tokenizing the text.")
 train_categorized(tokenized_rules_texts, vocab_size, metadata, categorized_prices, len(price_cutoffs))
 
 # TO RUN THE TENSORBOARD WEB SERVER:
-# tensorboard --logdir ./logs
+# tensorboard --logdir ./output/logs
