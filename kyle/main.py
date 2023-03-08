@@ -134,7 +134,7 @@ def train_categorized(card_texts, card_texts_vocab_size, card_metadata, card_pri
     # DECLARING CALLBACKS
     callbacks = [
         keras.callbacks.EarlyStopping(monitor="val_accuracy", patience=3),
-        keras.callbacks.ModelCheckpoint(filepath="categorized_model/weights-{val_loss:.2f}.pb", save_best_only=True,
+        keras.callbacks.ModelCheckpoint(filepath="categorized_model/weights.pb", save_best_only=True,
                                         save_weights_only=True),
         keras.callbacks.TensorBoard()
     ]
@@ -184,3 +184,6 @@ print("Finished tokenizing the text.")
 
 # Train the network
 train_categorized(tokenized_rules_texts, vocab_size, metadata, categorized_prices, len(price_cutoffs))
+
+# TO RUN THE TENSORBOARD WEB SERVER:
+# tensorboard --logdir ./logs
