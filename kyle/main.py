@@ -80,10 +80,10 @@ def parse_raw_cards(filepath, price_cutoff_categories):
             card_type = get_type(raw_card)
             cmc = categorize_cmc(int(raw_card["cmc"]))
             colors = get_colors(raw_card)
-            power = 0 if "power" not in raw_card else int(raw_card["power"])
-            toughness = 0 if "toughness" not in raw_card else int(raw_card["toughness"])
-            num_abilities = card_rules_text.count('/n')
-            card_metadata = [card_type, cmc, num_abilities] + colors + [power, toughness]
+            power = 0 if "power" not in raw_card else int(raw_card["power"]) / 10
+            toughness = 0 if "toughness" not in raw_card else int(raw_card["toughness"]) / 10
+            num_abilities = card_rules_text.count('/n') / 10
+            card_metadata = card_type + colors + [cmc, num_abilities, power, toughness]
             # Evaluation labels
             card_price = float(raw_card["prices"]["usd"])
             card_price_category = categorize_price(card_price, price_cutoff_categories)
@@ -133,8 +133,9 @@ def train_categorized(card_texts, card_texts_vocab_size, card_metadata, card_pri
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
     # DECLARING CALLBACKS
     callbacks = [
-        keras.callbacks.EarlyStopping(monitor="val_acc", patience=3),
-        keras.callbacks.ModelCheckpoint(filepath="categorized_model-{val_loss:.2f}", save_best_only=True),
+        keras.callbacks.EarlyStopping(monitor="val_accuracy", patience=3),
+        keras.callbacks.ModelCheckpoint(filepath="categorized_model/weights-{val_loss:.2f}.pb", save_best_only=True,
+                                        save_weights_only=True),
         keras.callbacks.TensorBoard()
     ]
     # TRAINING THE MODEL
@@ -169,10 +170,10 @@ def extract_tokenized(source, tokenizer):
 price_cutoffs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1, 5, 10, 50, 100]
 
 # Parse the raw cards and extract arrays of interest
-(rules_texts, metadata, prices) = parse_raw_cards("../dataset/oracle-cards.json", price_cutoffs)
+(rules_texts, metadata, prices, categorized_prices) = parse_raw_cards("../dataset/oracle-cards.json", price_cutoffs)
 
 # Print out the price categorization breakdowns
-print_price_categorization_stats(prices, price_cutoffs)
+print_price_categorization_stats(categorized_prices, price_cutoffs)
 
 # Tokenize the rules text
 print("Beginning to tokenize the text")
@@ -182,4 +183,4 @@ tokenized_rules_texts = extract_tokenized(rules_texts, tokenizer)
 print("Finished tokenizing the text.")
 
 # Train the network
-train_categorized(tokenized_rules_texts, vocab_size, metadata, prices, len(price_cutoffs))
+train_categorized(tokenized_rules_texts, vocab_size, metadata, categorized_prices, len(price_cutoffs))

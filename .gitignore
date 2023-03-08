@@ -129,3 +129,5 @@ dmypy.json
 .pyre/
 **/.DS_Store
 dataset/*
+kyle/categorized_model/*
+kyle/logs/*
