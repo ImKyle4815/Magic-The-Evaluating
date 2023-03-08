@@ -9,6 +9,21 @@ from tensorflow import keras
 ########################################################################################################################
 
 
+def index_to_one_hot(index, size):
+    a = [0] * size
+    a[index] = 1
+    return a
+
+
+def one_hot_categories(sample, categories):
+    num_categories = len(categories)
+    a = [0] * num_categories
+    for index in range(num_categories):
+        if categories[index] in sample:
+            a[index] = 1
+    return a
+
+
 def get_rules_text(card):
     cardName = card["name"]
     rules_text = card["oracle_text"]
@@ -31,35 +46,14 @@ def categorize_price(price, cutoffs):
 
 def get_type(card):
     type_line = card["type_line"]
-    if "Creature" in type_line:
-        return 0
-    elif "Instant" in type_line:
-        return 0.2
-    elif "Sorcery" in type_line:
-        return 0.4
-    elif "Enchantment" in type_line:
-        return 0.6
-    elif "Artifact" in type_line:
-        return 0.8
-    elif "Land" in type_line:
-        return 1
-    else:
-        raise Exception("Ignoring type: " + type_line)
+    categories = ["Creature", "Instant", "Sorcery", "Enchantment", "Artifact", "Land"]
+    return one_hot_categories(type_line, categories)
 
 
 def get_colors(card):
-    c = [0] * 5
-    if "W" in card["colors"]:
-        c[0] = 1
-    if "U" in card["colors"]:
-        c[1] = 1
-    if "B" in card["colors"]:
-        c[2] = 1
-    if "R" in card["colors"]:
-        c[3] = 1
-    if "G" in card["colors"]:
-        c[4] = 1
-    return c
+    colors = card["colors"]
+    categories = ["w", "u", "b", "r", "g"]
+    return one_hot_categories(colors, categories)
 
 
 def categorize_cmc(cmc):
@@ -68,13 +62,13 @@ def categorize_cmc(cmc):
     else:
         return 1
 
-
 def parse_raw_cards(filepath, price_cutoff_categories):
     file = open(filepath)
     raw_cards = json.load(file)
     all_rules_texts = []
     all_metadata = []
     all_prices = []
+    all_price_categories = []
     for raw_card in raw_cards:
         try:
             # Apply Filters
@@ -91,14 +85,16 @@ def parse_raw_cards(filepath, price_cutoff_categories):
             num_abilities = card_rules_text.count('/n')
             card_metadata = [card_type, cmc, num_abilities] + colors + [power, toughness]
             # Evaluation labels
-            card_price = categorize_price(float(raw_card["prices"]["usd"]), price_cutoff_categories)
+            card_price = float(raw_card["prices"]["usd"])
+            card_price_category = categorize_price(card_price, price_cutoff_categories)
             # Add the values to the lists
             all_rules_texts.append(card_rules_text)
             all_metadata.append(card_metadata)
             all_prices.append(card_price)
+            all_price_categories.append(card_price_category)
         except:
             continue
-    return np.array(all_rules_texts), np.array(all_metadata), np.array(all_prices)
+    return np.array(all_rules_texts), np.array(all_metadata), np.array(all_prices), np.array(all_price_categories)
 
 
 ########################################################################################################################
@@ -106,15 +102,16 @@ def parse_raw_cards(filepath, price_cutoff_categories):
 ########################################################################################################################
 
 
-def train(text, vocab_size, metadata, prices, num_output_categories, num_epochs=10):
+def train_categorized(card_texts, card_texts_vocab_size, card_metadata, card_prices, num_output_categories,
+                      num_epochs=128):
     # PREPARING VALUES
-    textShape = len(max(text, key=len))
-    metadataShape = metadata.shape[1]
+    textShape = len(max(card_texts, key=len))
+    metadataShape = card_metadata.shape[1]
     # BUILDING THE MODEL
     # text inputs
     textInputs = keras.Input(shape=(textShape,))
     # text processing layers
-    embeddedText = keras.layers.Embedding(input_dim=vocab_size, output_dim=128, input_length=textShape)(textInputs)
+    embeddedText = keras.layers.Embedding(input_dim=card_texts_vocab_size, output_dim=128, input_length=textShape)(textInputs)
     convLayer1 = keras.layers.Conv1D(256, 8, activation='relu')(embeddedText)
     maxPoolingLayer1 = keras.layers.MaxPooling1D(2)(convLayer1)
     convLayer2 = keras.layers.Conv1D(128, 8, activation='relu')(maxPoolingLayer1)
@@ -134,8 +131,14 @@ def train(text, vocab_size, metadata, prices, num_output_categories, num_epochs=
     model = keras.models.Model(inputs=[textInputs, metadataInputs], outputs=outputLayer)
     # COMPILING THE MODEL
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+    # DECLARING CALLBACKS
+    callbacks = [
+        keras.callbacks.EarlyStopping(monitor="val_acc", patience=3),
+        keras.callbacks.ModelCheckpoint(filepath="categorized_model-{val_loss:.2f}", save_best_only=True),
+        keras.callbacks.TensorBoard()
+    ]
     # TRAINING THE MODEL
-    model.fit([text, metadata], prices, epochs=num_epochs, validation_split=0.2)
+    model.fit([card_texts, card_metadata], card_prices, epochs=num_epochs, validation_split=0.2, callbacks=callbacks)
 
 
 ########################################################################################################################
@@ -179,4 +182,4 @@ tokenized_rules_texts = extract_tokenized(rules_texts, tokenizer)
 print("Finished tokenizing the text.")
 
 # Train the network
-train(tokenized_rules_texts, vocab_size, metadata, prices, len(price_cutoffs), 10)
+train_categorized(tokenized_rules_texts, vocab_size, metadata, prices, len(price_cutoffs))
