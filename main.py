@@ -105,30 +105,35 @@ def parse_raw_cards(filepath, price_cutoff_categories):
 def train_categorized(card_texts, card_texts_vocab_size, card_metadata, card_prices, num_output_categories,
                       num_epochs=128):
     # PREPARING VALUES
-    textShape = len(max(card_texts, key=len))
-    metadataShape = card_metadata.shape[1]
+    text_shape = len(max(card_texts, key=len))
+    metadata_shape = card_metadata.shape[1]
     # BUILDING THE MODEL
+    # TEXT PATH
     # text inputs
-    textInputs = keras.Input(shape=(textShape,))
+    text_path_inputs = keras.Input(shape=(text_shape,))
     # text processing layers
-    embeddedText = keras.layers.Embedding(input_dim=card_texts_vocab_size, output_dim=128, input_length=textShape)(textInputs)
-    convLayer1 = keras.layers.Conv1D(256, 8, activation='relu')(embeddedText)
-    maxPoolingLayer1 = keras.layers.MaxPooling1D(2)(convLayer1)
-    convLayer2 = keras.layers.Conv1D(128, 8, activation='relu')(maxPoolingLayer1)
-    maxPoolingLayer2 = keras.layers.MaxPooling1D(2)(convLayer2)
-    convLayer3 = keras.layers.Conv1D(64, 8, activation='relu')(maxPoolingLayer2)
-    maxPoolingLayer3 = keras.layers.MaxPooling1D(2)(convLayer3)
-    flattenedText = keras.layers.Flatten()(maxPoolingLayer3)
+    text_path_layer = keras.layers.Embedding(input_dim=card_texts_vocab_size, output_dim=128, input_length=text_shape)(text_path_inputs)
+    text_path_layer = keras.layers.Conv1D(256, 8, activation='relu')(text_path_layer)
+    text_path_layer = keras.layers.MaxPooling1D(2)(text_path_layer)
+    text_path_layer = keras.layers.Conv1D(128, 8, activation='relu')(text_path_layer)
+    text_path_layer = keras.layers.MaxPooling1D(2)(text_path_layer)
+    text_path_layer = keras.layers.Conv1D(64, 8, activation='relu')(text_path_layer)
+    text_path_layer = keras.layers.MaxPooling1D(2)(text_path_layer)
+    text_path_layer = keras.layers.Flatten()(text_path_layer)
+    # METADATA PATH
     # metadata inputs
-    metadataInputs = keras.Input(shape=(metadataShape,))
+    metadata_path_inputs = keras.Input(shape=(metadata_shape,))
+    # metadata processing layers
+    metadata_path_layer = keras.layers.Dense(64, activation='relu')(metadata_path_inputs)
+    # CONCAT PATH
     # concatenate text with numeric metadata
-    concatenatedLayers = keras.layers.concatenate([flattenedText, metadataInputs])
+    concat_path_layer = keras.layers.concatenate([text_path_layer, metadata_path_layer])
     # final processing
-    denseLayer1 = keras.layers.Dense(16, activation='relu')(concatenatedLayers)
+    concat_path_layer = keras.layers.Dense(16, activation='relu')(concat_path_layer)
     # output layer
-    outputLayer = keras.layers.Dense(num_output_categories, activation='softmax')(denseLayer1)
+    concat_path_layer = keras.layers.Dense(num_output_categories, activation='softmax')(concat_path_layer)
     # construct the model
-    model = keras.models.Model(inputs=[textInputs, metadataInputs], outputs=outputLayer)
+    model = keras.models.Model(inputs=[text_path_inputs, metadata_path_inputs], outputs=concat_path_layer)
     # COMPILING THE MODEL
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
     # DECLARING CALLBACKS
@@ -167,7 +172,18 @@ def extract_tokenized(source, text_tokenizer):
 ########################################################################################################################
 
 # Declare price categories
-price_cutoffs = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1, 5, 10, 50, 100]
+price_cutoffs = [
+    0.05,
+    0.10,
+    0.15,
+    0.20,
+    0.25,
+    0.30,
+    0.50,
+    1.00,
+    10.00,
+    100.00
+]
 
 # Parse the raw cards and extract arrays of interest
 (rules_texts, metadata, prices, categorized_prices) = parse_raw_cards("./input/oracle-cards-dataset.json", price_cutoffs)
