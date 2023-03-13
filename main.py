@@ -226,11 +226,12 @@ print("Finished tokenizing the text.")
 # Train the network
 model = train_categorization_model(train_tokenized_texts, vocab_size, train_metadata, train_categorized_prices,
                                    len(price_cutoffs))
+
 model.evaluate([test_texts, test_metadata], test_categorized_prices)
 
 for test_card in test_cards[:10]:
     print(test_card["name"], "is worth", test_card["price"], "under category", test_card["price_category"],
-          "and predicts as category", model.predict([test_card["text"], test_card["metadata"]]))
+          "and predicts as category", model.predict([np.array([test_card["text"]]), np.array([test_card["metadata"]])]))
 
 # TO RUN THE TENSORBOARD WEB SERVER:
 # tensorboard --logdir ./output/logs
