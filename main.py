@@ -1,8 +1,13 @@
 import json
 import numpy as np
+import os
 from tensorflow import keras
 
 
+# File structure constants
+CARDS_FILE_PATH = "./input/oracle-cards-dataset.json"
+MODEL_WEIGHTS_FILE_NAME = "output/categorized_model/weights.pb"
+# Dataset and training features
 MAX_CARD_TEXT_LENGTH = 256
 METADATA_LENGTH = 15
 VOCAB_SIZE = 2048
@@ -104,6 +109,7 @@ def parse_raw_card(raw_card, price_cutoff_categories):
         "price_category": card_price_category
     }
 
+
 def parse_raw_cards(filepath, price_cutoff_categories):
     file = open(filepath)
     raw_cards = json.load(file)
@@ -170,8 +176,7 @@ def get_categorization_model(card_texts_shape, card_texts_vocab_size, card_metad
 def get_callbacks():
     return [
         keras.callbacks.EarlyStopping(monitor="val_accuracy", patience=3),
-        keras.callbacks.ModelCheckpoint(filepath="output/categorized_model/weights.pb", save_best_only=True,
-                                        save_weights_only=True),
+        keras.callbacks.ModelCheckpoint(filepath=MODEL_WEIGHTS_FILE_NAME, save_best_only=True),
         keras.callbacks.TensorBoard(log_dir="output/logs")
     ]
 
@@ -210,34 +215,39 @@ def extract_feature(array, key):
 
 if __name__ == "__main__":
     # Parse the raw cards and extract arrays of interest
-    parsed_cards = parse_raw_cards("./input/oracle-cards-dataset.json", PRICE_CATEGORIES)
+    parsed_cards = parse_raw_cards(CARDS_FILE_PATH, PRICE_CATEGORIES)
     # Split out the test and train data
     train_cards, test_cards = split_test_data(parsed_cards)
     # Extract all the desired features
     train_categorized_prices = extract_feature(train_cards, "price_category")
-    train_texts = extract_feature(train_cards, "text")
+    train_texts = tokenize_texts(extract_feature(train_cards, "text"))
     train_metadata = extract_feature(train_cards, "metadata")
     test_categorized_prices = extract_feature(test_cards, "price_category")
-    test_texts = extract_feature(test_cards, "text")
+    test_texts = tokenize_texts(extract_feature(test_cards, "text"))
     test_metadata = extract_feature(test_cards, "metadata")
 
     # Print out the price categorization breakdowns
     print_price_categorization_stats(train_categorized_prices, PRICE_CATEGORIES)
 
-    # Tokenize the rules text
-    train_tokenized_texts = tokenize_texts(train_texts)
-
-    # Train the network
+    # Create the model
     model = get_categorization_model(MAX_CARD_TEXT_LENGTH, VOCAB_SIZE, METADATA_LENGTH, len(PRICE_CATEGORIES))
 
-    model.fit([train_tokenized_texts, train_metadata], train_categorized_prices, epochs=10, validation_split=0.2,
-              callbacks=get_callbacks())
+    # Either load the model, or train it
+    if os.path.exists(MODEL_WEIGHTS_FILE_NAME):
+        print("[ Loading pre-saved weights ]")
+        model.load_weights(MODEL_WEIGHTS_FILE_NAME)
+    else:
+        model.fit([train_texts, train_metadata], train_categorized_prices, epochs=1, validation_split=0.2,
+                  callbacks=get_callbacks())
 
+    # Evaluate the model against the test set
     model.evaluate([test_texts, test_metadata], test_categorized_prices)
 
+    # Run predictions against random test cards
     for test_card in test_cards[:10]:
         print(test_card["name"], "is worth", test_card["price"], "under category", test_card["price_category"],
-              "and predicts as category", model.predict([np.array([test_card["text"]]), np.array([test_card["metadata"]])]))
+              "and predicts as category",
+              model.predict([np.array(tokenize_texts([test_card["text"]])), np.array([test_card["metadata"]])]))
 
     # TO RUN THE TENSORBOARD WEB SERVER:
     # tensorboard --logdir ./output/logs
