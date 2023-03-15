@@ -164,9 +164,9 @@ def get_categorization_model(card_texts_shape, card_texts_vocab_size, card_metad
     concat_path_layer = keras.layers.Dense(32, activation='relu')(concat_path_layer)
     concat_path_layer = keras.layers.Dense(16, activation='relu')(concat_path_layer)
     # output layer
-    concat_path_layer = keras.layers.Dense(num_output_categories, activation='softmax')(concat_path_layer)
+    output_layer = keras.layers.Dense(num_output_categories, activation='softmax')(concat_path_layer)
     # construct the model
-    model = keras.models.Model(inputs=[text_path_inputs, metadata_path_inputs], outputs=concat_path_layer)
+    model = keras.models.Model(inputs=[text_path_inputs, metadata_path_inputs], outputs=output_layer)
     # COMPILING THE MODEL
     model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
     # TRAINING THE MODEL
@@ -248,7 +248,7 @@ if __name__ == "__main__":
         prediction = model.predict([np.array(tokenize_texts([test_card["text"]])), np.array([test_card["metadata"]])])
         print(test_card["name"], "is worth", test_card["price"], "under category",
               np.argmax(test_card["price_category"]), "and predicts as category", np.argmax(prediction),
-              "which is under", PRICE_CATEGORIES[np.argmax(prediction)])
+              "which is under", "${:,.2f}".format(PRICE_CATEGORIES[np.argmax(prediction)]))
 
     # TO RUN THE TENSORBOARD WEB SERVER:
     # tensorboard --logdir ./output/logs
