@@ -5,6 +5,7 @@ import unicodedata
 import os
 import math
 import matplotlib.pyplot as plt
+from random import shuffle
 
 CARDS_FILE_PATH = "rawData\oracle-cards-20230215100208.json"
 MODEL_WEIGHTS_FILE_NAME = "mtg_price_predictor_weights.keras"
@@ -57,9 +58,11 @@ def get_type_as_int(type):
         raise Exception("Ignoring type: " + type)
 
 def encode_at_limit(value, value_limit, number_of_value_categories):
+    # Initialize a 0 array
     encoding_array = np.zeros((number_of_value_categories,), dtype=int)
-    if value:
-        value = value if value < value_limit else 9 
+    if value is not None:
+        # If the value is under the specified limit, use that, otherwise use the maximum value.
+        value = value if value < value_limit else number_of_value_categories-1 
         encoding_array[value] = 1
     return encoding_array
 
@@ -77,20 +80,16 @@ def load_cards(path):
             card["rules"] = cleanRulesText(card["name"], raw_card["oracle_text"])
             card["cost"] = raw_card["mana_cost"].replace("}{", " ").replace("/", "")[1:-2]
             card["type"] = encode_at_limit(get_type_as_int(raw_card["type_line"]), 10, 10)
-            # Required fields (nums)
             card["cmc"] = encode_at_limit(int(raw_card["cmc"]), 10, 10)
-            # Optional fields
-            card["power"] = encode_at_limit(int(raw_card["power"]), 10, 10)
-            card["toughness"] = encode_at_limit(int(raw_card["power"]), 10, 10)
-            card["loyalty"] = 0 if "loyalty" not in raw_card else int(raw_card["loyalty"])
-            # Evaluation labels
-            card["rank"] = float(raw_card["edhrec_rank"])
+            card_power = raw_card.get("power", None)
+            card["power"] = encode_at_limit(int(card_power) if card_power is not None else None, 10, 10)
+            card_toughness = raw_card.get("toughness", None)
+            card["toughness"] = encode_at_limit(int(card_toughness) if card_toughness is not None else None, 10, 10)
             card["usd"] = float(raw_card["prices"]["usd"])
-            # print(card["usd"])
             cards.append(card)
         except Exception as e:
-            #print(e)
             continue
+        
     file.close()
     return cards
     
@@ -125,7 +124,6 @@ def create_model(vocab_size, text_shape, metadata_shape):
 
     # Compile the model
     model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mse', 'mae', 'mape', RootMeanSquaredError()])
-    # TRAINING THE MODEL
     
     return model
 
@@ -140,14 +138,13 @@ def create_model(vocab_size, text_shape, metadata_shape):
 #                                                #
 #************************************************#
 
-def extract_tokenized(source, field, tokenizer):
-    res = [item[field] for item in source]
-    res = np.array(res)
-    tokenizer.fit_on_texts(res)
-    res = tokenizer.texts_to_sequences(res)
+# Expects a numpy array of each rules text as source.
+def tokenize(source, tokenizer):
+    source_copy = source.copy()
+    tokenizer.fit_on_texts(source_copy)
+    res = tokenizer.texts_to_sequences(source_copy)
     res = keras.preprocessing.sequence.pad_sequences(res)
     return res
-
 
 def extract_value(source, field):
     res = [item[field] for item in source]
@@ -163,8 +160,7 @@ def normalize_values(num_set):
 def deNormalize_values(num_set, num_set_mean, num_set_std):
     return (num_set * num_set_std) + num_set_mean
 
-
-def remove_outliers(labelset, dataset,range_max, range_min):
+def remove_field_outliers_from_dataset(labelset, dataset, range_min, range_max):
     print("Removing normalized outliers...")
     count = 0
     for i in range(len(labelset)-1, 0, -1):
@@ -173,52 +169,23 @@ def remove_outliers(labelset, dataset,range_max, range_min):
             del dataset[i]
             count+=1
     print("Deleted: " + str(count))
-    print("New Size: " + str(len(cards)))
+    print("New Size: " + str(len(dataset)))
     return (labelset, dataset)
 
 
-def tokenize_input_data(cards, tokenizer):
+def extract_multiple_values(source, fields):
     print("Beginning to shape text and metadata.")
-
-    # Normalize and Remove any cards that are outliers.
-    usd = normalize_values(extract_value(cards, "usd"))[0]
-    (usd, cards) = remove_outliers(usd, cards,  1, -1)    
+    values = []
+    for field in fields:
+        values.append(extract_value(source, field))
+    return values 
     
-    rules = extract_tokenized(cards, "rules", tokenizer)
-    
-    # Create Meta Data
-    types = extract_value(cards, "type")
-    cmc = extract_value(cards, "cmc")
-    power = extract_value(cards, "power")
-    toughness = extract_value(cards, "toughness")
-    metadata = np.stack((cmc, power, toughness, types), axis=-1)
-    
-    print("Text data shape: " + str(rules.shape))
-    print("Meta data shape: " + str(metadata.shape))
-    
-    print("Finished shaping text and metadata.")
-    # (Text Data, Meta Data, Labels)
-    return (rules, metadata, usd)
-
-
+ 
 def rmse(actual, predicted):
     return math.sqrt(np.square(np.subtract(actual, predicted)).mean())
 
-# def plot_results(actual, predicted):
-#     _, ax = plt.subplots()
-
-#     ax.scatter(x = range(0, len(actual)), y=actual, c = 'blue', label = 'Actual', alpha = 0.3)
-#     ax.scatter(x = range(0, len(predicted)), y=predicted, c = 'red', label = 'Predicted', alpha = 0.3)
-
-#     plt.title('Actual and predicted values')
-#     plt.xlabel('')
-#     plt.ylabel('Price')
-#     plt.legend()
-#     plt.show()
-    
-
-###################################################################################################################
-
+def mae(actual, predicted):
+    return np.mean(np.abs(actual - predicted))
 
 #************************************************#
 #                                                #
@@ -226,55 +193,69 @@ def rmse(actual, predicted):
 #                                                #
 #************************************************#
 
-# KNOWN VOCAB MAX SIZE (21,077)
-vocab_size = 15000
-tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
+def run_mte():
+    print("Loading and cleaning cards...")
+    cards = load_cards(CARDS_FILE_PATH)
+    shuffle(cards)
 
-print("Loading and cleaning cards...")
-cards = load_cards(CARDS_FILE_PATH)
+    # Prepare Data
+    print("Preparing input data...")
+    ## Prepare Labels
+    (normalized_labels, usd_mean, usd_std) = normalize_values(extract_value(cards, "usd"))
+    (normalized_labels, reduced_cards) = remove_field_outliers_from_dataset(normalized_labels, cards, -1, 1)
 
-# (Text Data, Meta Data, Labels)
-print("Tokenizing input data...")
-model_data = tokenize_input_data(cards.copy(), tokenizer)
+    ## Prepare Rules
+    # KNOWN VOCAB MAX SIZE (21,077)
+    vocab_size = 10000
+    tokenizer = keras.preprocessing.text.Tokenizer(num_words=vocab_size)
+    tokenized_rules = tokenize(extract_value(reduced_cards, "rules"), tokenizer)
 
-# Test split 80%
-split_index = (int(len(model_data[0])*0.8))
+    ## Prepare Meta Data
+    meta_data_fields = ["type", "cmc", "power", "toughness"]
+    meta_data_values = extract_multiple_values(reduced_cards, meta_data_fields)
+    tokenized_metadata = np.stack((meta_data_values[0], meta_data_values[1], meta_data_values[2], meta_data_values[3]), axis=-1)
 
-(train_text, test_text) = model_data[0][:split_index], model_data[0][split_index:]
-(train_metadata, test_metadata) = model_data[1][:split_index], model_data[1][split_index:]
-(train_labels, test_labels) = model_data[2][:split_index], model_data[2][split_index:]
+    # Generate Test Split
+    split_index = (int(len(reduced_cards)*0.8))
+    
+    ## Split Data
+    (reduced_cards_train, reduced_cards_test) = reduced_cards[:split_index], reduced_cards[split_index+1:]
+    (train_text, test_text) = tokenized_rules[:split_index], tokenized_rules[split_index+1:]
+    (train_metadata, test_metadata) = tokenized_metadata[:split_index], tokenized_metadata[split_index+1:]
+    (train_labels, test_labels) = normalized_labels[:split_index], normalized_labels[split_index+1:]
 
-#Create Model
-print("Creating model...")
-model = create_model(vocab_size, max(train_text, key=len).shape, train_metadata[0].shape)
+    # Create Model
+    print("Creating model...")
+    model = create_model(vocab_size, max(train_text, key=len).shape, train_metadata[0].shape)
 
-if os.path.exists(MODEL_WEIGHTS_FILE_NAME):
-    print("Loading presaved weights...")
-    model = model.load_weights(MODEL_WEIGHTS_FILE_NAME)
-else:
-    call_backs = [callbacks.ModelCheckpoint(filepath=MODEL_WEIGHTS_FILE_NAME, save_best_only=True)]
-    model_history = model.fit([train_text, train_metadata], train_labels, epochs=10, callbacks=call_backs, validation_split=0.2, batch_size=32)
-    model.save_weights(MODEL_WEIGHTS_FILE_NAME)
+    # Load Model if it exists
+    if os.path.exists(MODEL_WEIGHTS_FILE_NAME):
+        print("Loading presaved weights...")
+        model.load_weights(MODEL_WEIGHTS_FILE_NAME)
+    else:
+        call_backs = [callbacks.ModelCheckpoint(filepath=MODEL_WEIGHTS_FILE_NAME, save_best_only=True)]
+        model_history = model.fit([train_text, train_metadata], train_labels, epochs=10, callbacks=call_backs, validation_split=0.2)
+
+    #Run predictions
+    predictions = model.predict([test_text, test_metadata])
 
 
-#Normalize the labels for comparison
-(_, usd_mean, usd_std) = normalize_values(extract_value(cards, "usd"))
+    # Display Results
+    deNormalized_labels = deNormalize_values(test_labels, usd_mean, usd_std)
+    deNormalized_predictions = deNormalize_values(predictions, usd_mean, usd_std)
 
-#Run predictions
-predictions = model.predict([test_text, test_metadata])
+    print("After denormalization")
+    print("Test Labels")
+    print(deNormalized_labels)
+    print("Predictions")
+    print(deNormalized_predictions)
 
-#Show Results
-print("Before denormalization")
-print(predictions)
+    for i in range(0, 10):
+        print(("Card Name: " + reduced_cards_test[i]["name"]).ljust(45) + (" Predicted: " + str(deNormalized_predictions[i])).ljust(30) + (" Actual: " + str(reduced_cards_test[i]["usd"])).ljust(20))
 
-deNormalized_predictions = deNormalize_values(predictions, usd_mean, usd_std)
-deNormalized_labels = deNormalize_values(test_labels, usd_mean, usd_std)
-
-print("After denormalization")
-print(deNormalized_predictions)
-test_card_split = cards[split_index:]
-print(test_card_split[0]["name"] + ": " + "Predicted: " + str(deNormalized_predictions[0]) +  " Actual: " + str(deNormalized_labels[0]))
-print(test_card_split[1]["name"] + ": " + "Predicted: " + str(deNormalized_predictions[1]) +  " Actual: " + str(deNormalized_labels[1]))
-
-print("RMSE")
-print(rmse(deNormalized_labels, deNormalized_predictions))
+    print("RMSE")
+    print(rmse(deNormalized_labels, deNormalized_predictions))
+    print("MAE")
+    print(mae(deNormalized_labels, deNormalized_predictions))
+    
+run_mte()
