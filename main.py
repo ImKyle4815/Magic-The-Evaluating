@@ -237,17 +237,18 @@ if __name__ == "__main__":
         print("[ Loading pre-saved weights ]")
         model.load_weights(MODEL_WEIGHTS_FILE_NAME)
     else:
-        model.fit([train_texts, train_metadata], train_categorized_prices, epochs=10, validation_split=0.2,
+        model.fit([train_texts, train_metadata], train_categorized_prices, epochs=128, validation_split=0.2,
                   callbacks=get_callbacks())
 
     # Evaluate the model against the test set
-    model.evaluate([test_texts, test_metadata], test_categorized_prices)
+    # model.evaluate([test_texts, test_metadata], test_categorized_prices)
 
     # Run predictions against random test cards
     for test_card in test_cards[:10]:
         prediction = model.predict([np.array(tokenize_texts([test_card["text"]])), np.array([test_card["metadata"]])])
         print(test_card["name"], "is worth", test_card["price"], "under category",
-              np.argmax(test_card["price_category"]), "and predicts as category", np.argmax(prediction))
+              np.argmax(test_card["price_category"]), "and predicts as category", np.argmax(prediction),
+              "which is under", PRICE_CATEGORIES[np.argmax(prediction)])
 
     # TO RUN THE TENSORBOARD WEB SERVER:
     # tensorboard --logdir ./output/logs
