@@ -5,10 +5,20 @@ import unicodedata
 import os
 import math
 import matplotlib.pyplot as plt
+import random
 from random import shuffle
+
 
 CARDS_FILE_PATH = "rawData\oracle-cards-20230215100208.json"
 MODEL_WEIGHTS_FILE_NAME = "mtg_price_predictor_weights.keras"
+
+
+#************************************************#
+#                                                #
+#                Cleaning Functions              #
+#                                                #
+#************************************************#
+
 
 def replace_cardname(card_name, rules_text):
     if card_name in rules_text:
@@ -93,31 +103,59 @@ def load_cards(path):
     file.close()
     return cards
     
-########################################################################################################################
-########################################################################################################################
-########################################################################################################################
+
+#************************************************#
+#                                                #
+#                Model Function                  #
+#                                                #
+#************************************************#
+
 from tensorflow import keras
-from keras.layers import Input, LSTM, concatenate, Dense
+from keras.layers import Input, LSTM, concatenate, Dense, Conv1D, Conv2D, MaxPooling1D, MaxPooling2D, Reshape
 from keras.models import Model
 from keras.metrics import RootMeanSquaredError
 from keras import callbacks
 
 def create_model(vocab_size, text_shape, metadata_shape):
-    # Input Layers
+    #--------------------#
+    ## Text Data Layers ##
+    #--------------------#
     text_input = Input(shape=text_shape)
-    metadata_input = Input(shape=metadata_shape)
 
     # Embedding Layer
     text_embed = keras.layers.Embedding(input_dim=vocab_size, output_dim=100, input_length=text_shape)(text_input)
+        
+    # 1D Convolutional Layer for Text
+    text_conv = Conv1D(filters=64, kernel_size=3, padding='same', activation='relu')(text_embed)
+    text_pool = MaxPooling1D(pool_size=2)(text_conv)
     
-    text_lstm = LSTM(64, dropout=0.2)(text_embed)
+    # LSTM For text 
+    text_lstm = LSTM(64, dropout=0.2)(text_pool)
 
-    metadata_flatten = keras.layers.Flatten()(metadata_input)
+    #--------------------#
+    ## Meta Data Layers ##
+    #--------------------#
+    metadata_input = Input(shape=metadata_shape)
+
+    # Reshape the metadata input to have a shape of (batch_size, height, width, channels)
+    metadata_reshape = Reshape(target_shape=(4, 10, 1))(metadata_input)
+
+    # 2D Convolutional Layer for Metadata
+    metadata_conv = Conv2D(filters=64, kernel_size=(2,2), padding='same', activation='relu')(metadata_reshape)
+
+    # Meta Data Pool
+    metadata_pool = MaxPooling2D(pool_size=(2, 2))(metadata_conv)
+
+    metadata_flatten = keras.layers.Flatten()(metadata_pool)
+    
+    #--------------------#
+    ##  Concat Layers   ##
+    #--------------------#
     # Concatenate the LSTM layer and metadata layer 
     concat = concatenate([text_lstm, metadata_flatten])
     
     # Add a final output layer for regression
-    output = Dense(1, activation='linear')(concat)
+    output = Dense(1, activation='tanh')(concat)
 
     # Define the model
     model = Model(inputs=[text_input, metadata_input], outputs=output)
@@ -126,10 +164,6 @@ def create_model(vocab_size, text_shape, metadata_shape):
     model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mse', 'mae', 'mape', RootMeanSquaredError()])
     
     return model
-
-########################################################################################################################
-########################################################################################################################
-########################################################################################################################
 
 
 #************************************************#
@@ -189,15 +223,16 @@ def mae(actual, predicted):
 
 #************************************************#
 #                                                #
-#                Execution Code                  #
+#                Execution Function              #
 #                                                #
 #************************************************#
 
 def run_mte():
     print("Loading and cleaning cards...")
     cards = load_cards(CARDS_FILE_PATH)
+    random.seed(2828)
     shuffle(cards)
-
+    print(cards[0])
     # Prepare Data
     print("Preparing input data...")
     ## Prepare Labels
@@ -211,9 +246,8 @@ def run_mte():
     tokenized_rules = tokenize(extract_value(reduced_cards, "rules"), tokenizer)
 
     ## Prepare Meta Data
-    meta_data_fields = ["type", "cmc", "power", "toughness"]
-    meta_data_values = extract_multiple_values(reduced_cards, meta_data_fields)
-    tokenized_metadata = np.stack((meta_data_values[0], meta_data_values[1], meta_data_values[2], meta_data_values[3]), axis=-1)
+    meta_data_values = extract_multiple_values(reduced_cards, ["type", "cmc", "power", "toughness"])
+    tokenized_metadata = np.stack((meta_data_values[0], meta_data_values[1], meta_data_values[2], meta_data_values[3]), axis=1)
 
     # Generate Test Split
     split_index = (int(len(reduced_cards)*0.8))
@@ -234,7 +268,7 @@ def run_mte():
         model.load_weights(MODEL_WEIGHTS_FILE_NAME)
     else:
         call_backs = [callbacks.ModelCheckpoint(filepath=MODEL_WEIGHTS_FILE_NAME, save_best_only=True)]
-        model_history = model.fit([train_text, train_metadata], train_labels, epochs=10, callbacks=call_backs, validation_split=0.2)
+        model_history = model.fit([train_text, train_metadata], train_labels, epochs=20, callbacks=call_backs, validation_split=0.2, batch_size=32)
 
     #Run predictions
     predictions = model.predict([test_text, test_metadata])
