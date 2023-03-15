@@ -241,7 +241,7 @@ if __name__ == "__main__":
                   callbacks=get_callbacks())
 
     # Evaluate the model against the test set
-    # model.evaluate([test_texts, test_metadata], test_categorized_prices)
+    model.evaluate([test_texts, test_metadata], test_categorized_prices)
 
     # Run predictions against random test cards
     for test_card in test_cards[:10]:
