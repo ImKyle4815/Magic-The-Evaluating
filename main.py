@@ -208,7 +208,7 @@ def extract_feature(array, key):
 ########################################################################################################################
 
 
-def driver():
+if __name__ == "__main__":
     # Parse the raw cards and extract arrays of interest
     parsed_cards = parse_raw_cards("./input/oracle-cards-dataset.json", PRICE_CATEGORIES)
     # Split out the test and train data
@@ -241,6 +241,3 @@ def driver():
 
     # TO RUN THE TENSORBOARD WEB SERVER:
     # tensorboard --logdir ./output/logs
-
-if __name__ == "__main__":
-    driver()
